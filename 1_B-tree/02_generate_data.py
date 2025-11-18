@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 """
 Генератор тестовых данных для B-tree индекса
 Генерирует пользователей и заказы для тестирования диапазонных запросов
@@ -19,14 +20,19 @@ def generate_users_data(num_records):
     fake = Faker()
     users = []
     
+    # Определяем диапазон дат
+    end_date = datetime.now()
+    start_date_5y = end_date - timedelta(days=5*365)
+    start_date_1y = end_date - timedelta(days=365)
+    
     for i in range(num_records):
         user = (
             fake.user_name()[:50],
             fake.email()[:100],
             random.randint(18, 80),  # возраст
             round(random.uniform(30000, 150000), 2),  # зарплата
-            fake.date_between(start_date='-5 years', end_date='today'),  # дата создания
-            fake.date_time_between(start_date='-1 year', end_date='now'),  # последний вход
+            fake.date_between(start_date=start_date_5y, end_date=end_date),  # дата создания
+            fake.date_time_between(start_date=start_date_1y, end_date=end_date),  # последний вход
             random.choice([True, False])  # активность
         )
         users.append(user)
@@ -43,10 +49,14 @@ def generate_orders_data(num_records, max_user_id):
     statuses = ['pending', 'completed', 'shipped', 'cancelled']
     categories = ['electronics', 'books', 'clothing', 'home', 'sports']
     
+    # Диапазон дат для заказов
+    end_date = datetime.now()
+    start_date_2y = end_date - timedelta(days=2*365)
+    
     for i in range(num_records):
         order = (
             random.randint(1, max_user_id),  # user_id
-            fake.date_between(start_date='-2 years', end_date='today'),  # order_date
+            fake.date_between(start_date=start_date_2y, end_date=end_date),  # order_date
             round(random.uniform(10, 1000), 2),  # amount
             random.choice(statuses),  # status
             random.choice(categories)  # product_category
@@ -60,18 +70,19 @@ def generate_orders_data(num_records, max_user_id):
 
 def main():
     config = DB_CONFIG.copy()
-    config['search_path'] = 'Btree'
     
     conn = get_db_connection()
-    conn.autocommit = False
     cursor = conn.cursor()
     
     try:
+        # Устанавливаем схему
+        cursor.execute("SET search_path TO Btree")
+        
         print("Генерация данных для B-tree индексов...")
         
         # Генерация пользователей
-        print("Генерация 500,000 пользователей...")
-        users_data = generate_users_data(500000)
+        print("Генерация 100,000 пользователей...")
+        users_data = generate_users_data(100000)
         
         print("Вставка пользователей в БД...")
         users_sql = """
@@ -86,9 +97,13 @@ def main():
             conn.commit()
             print(f"Вставлено {i + len(batch)} пользователей")
         
+        # Получаем максимальный ID пользователя
+        cursor.execute("SELECT MAX(id) FROM users")
+        max_user_id = cursor.fetchone()[0]
+        
         # Генерация заказов
-        print("Генерация 1,000,000 заказов...")
-        orders_data = generate_orders_data(1000000, 500000)
+        print("Генерация 200,000 заказов...")
+        orders_data = generate_orders_data(200000, max_user_id)
         
         print("Вставка заказов в БД...")
         orders_sql = """
@@ -107,6 +122,8 @@ def main():
     except Exception as e:
         conn.rollback()
         print(f"Ошибка: {e}")
+        import traceback
+        traceback.print_exc()
     finally:
         cursor.close()
         conn.close()
