@@ -1,3 +1,4 @@
+create database indexes_study;
 SELECT count(*)
 FROM btree.orders;
 --200000
